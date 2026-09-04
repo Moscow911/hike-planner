@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hike Planner — Каталог и Поиск Походов</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background-color: #f0f2f5; color: #333; }
+        
+        .header { background: #1e293b; color: white; padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        
+        .top-tools { max-width: 1400px; margin: 20px auto 0; padding: 0 20px; display: flex; flex-direction: column; gap: 15px; }
+        
+        /* Панель поиска и создания */
+        .search-bar { background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; gap: 15px; align-items: center; }
+        .search-input { flex: 1; padding: 12px 16px; font-size: 1em; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; margin-bottom: 0; }
+        .search-input:focus { border-color: #10b981; }
+
+        .create-custom-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .create-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+
+        .main-layout { display: flex; max-width: 1400px; margin: 0 auto; padding: 20px; gap: 20px; }
+        
+        /* Боковая панель */
+        .sidebar { flex: 1; max-width: 380px; display: flex; flex-direction: column; gap: 20px; }
+        .panel { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
+        /* Каталог */
+        .catalog { flex: 2; display: flex; flex-direction: column; gap: 20px; }
+        .mountain-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; transition: transform 0.2s, box-shadow 0.2s; }
+        .mountain-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.08); }
+        
+        .mountain-tags { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+        .tag { background: #f1f5f9; padding: 4px 12px; border-radius: 15px; font-size: 0.85em; font-weight: 600; color: #475569; }
+        .tag-hard { background: #fee2e2; color: #991b1b; }
+        .tag-med { background: #fef3c7; color: #92400e; }
+        .tag-easy { background: #dcfce7; color: #166534; }
+        
+        input, select, button { display: block; width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+        button { background-color: #10b981; color: white; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { background-color: #059669; }
+        
+        .auth-wrapper { display: flex; justify-content: center; align-items: center; min-height: 80vh; }
+        .auth-card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 380px; text-align: center; }
+        .btn-guest { background: #64748b; }
+        .toggle-link { color: #2563eb; cursor: pointer; font-size: 0.9em; text-decoration: underline; }
+
+        #map { height: 220px; border-radius: 8px; margin-top: 10px; }
+        .weather-box { background: #e0f2fe; padding: 10px; border-radius: 6px; text-align: center; font-weight: 600; color: #0369a1; }
+        .chat-box { border: 1px solid #e2e8f0; height: 160px; overflow-y: auto; padding: 10px; background: #f8fafc; border-radius: 6px; margin-bottom: 10px; }
+        .chat-msg { margin-bottom: 6px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>🏕️ Hike Planner</h2>
+        <div id="userInfo"></div>
+    </div>
+
+    <!-- Авторизация -->
+    <div id="authSection" class="auth-wrapper">
+        <div class="auth-card">
+            <h3 id="authTitle">Вход в систему</h3>
+            <input type="text" id="authName" placeholder="Ваше имя" style="display: none;">
+            <input type="email" id="authEmail" placeholder="Email">
+            <input type="password" id="authPassword" placeholder="Пароль">
+            <button id="authBtn" onclick="submitAuth()">Войти</button>
+            <button class="btn-guest" onclick="continueAsGuest()">Продолжить без авторизации</button>
+            <span class="toggle-link" id="toggleAuth" onclick="toggleAuthMode()">Регистрация</span>
+        </div>
+    </div>
+
+    <!-- Главная страница -->
+    <div id="appSection" style="display: none;">
+        
+        <div class="top-tools">
+            <!-- Панель Поиска -->
+            <div class="search-bar">
+                <span>🔍</span>
+                <input type="text" id="searchInput" class="search-input" placeholder="Поиск по названию горы, региону или описанию (например: Эльбрус, Байкал, Кавказ...)" oninput="filterCatalog()">
+            </div>
+
+            <!-- Форма создания своего похода -->
+            <div class="create-custom-card">
+                <h3 style="margin-top:0; color:#1e293b;">➕ Создать собственный поход</h3>
+                <p style="margin:0 0 10px 0; font-size:0.9em; color:#64748b;">Введите данные и кликните на карте справа, чтобы привязать точку локации.</p>
+                <div class="create-form-grid">
+                    <input type="text" id="customTitle" placeholder="Название похода (например: Поход на Соболиные озера)" style="margin:0;">
+                    <input type="text" id="customLoc" placeholder="Локация / Точка на карте" style="margin:0;">
+                    <input type="date" id="customDate" style="margin:0;">
+                    <select id="customDiff" style="margin:0;">
+                        <option value="Легкий">Легкий</option>
+                        <option value="Средний" selected>Средний</option>
+                        <option value="Сложный">Сложный</option>
+                    </select>
+                </div>
+                <button onclick="createCustomTrip()" style="margin-top:10px; width:100%;">Опубликовать поход</button>
+            </div>
+        </div>
+
+        <div class="main-layout">
+            <!-- Боковая панель -->
+            <div class="sidebar">
+                <div class="panel">
+                    <h3>Карта и Погода</h3>
+                    <div id="weather" class="weather-box">Кликните на карту для получения погоды</div>
+                    <div id="map"></div>
+                </div>
+
+                <div class="panel">
+                    <h3>Активные походы пользователей</h3>
+                    <div id="tripsList">Загрузка...</div>
+                </div>
+
+                <div id="chatSection" class="panel" style="display: none;">
+                    <h4 id="chatTitle">Чат похода</h4>
+                    <div class="chat-box" id="chatBox"></div>
+                    <input type="text" id="msgText" placeholder="Сообщение / Список продуктов..." style="margin-bottom:6px;">
+                    <button onclick="sendMessage()">Отправить</button>
+                </div>
+            </div>
+
+            <!-- Каталог походов -->
+            <div class="catalog" id="mountainCatalog"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const mountains = [
+            { title: "Эльбрус", loc: "Кавказ, Россия", alt: "5642 м", diff: "Сложный", class: "tag-hard", desc: "Высшая точка России и Европы. Стратовулкан с двумя вершинами, покрытыми вечными снегами и ледниками." },
+            { title: "Пик Черского", loc: "Хребет Хамар-Дабан, Байкал", alt: "2090 м", diff: "Средний", class: "tag-med", desc: "Самый популярный маршрут Южного Прибайкалья. Потрясающий вид на озеро Сердце и горные хребты." },
+            { title: "Большая Байкальская Тропа", loc: "Озеро Байкал", alt: "400-800 м", diff: "Легкий", class: "tag-easy", desc: "Живописный маршрут вдоль берега священного озера через скалы, тайгу и песчаные бухты." },
+            { title: "Белуха", loc: "Алтай, Россия", alt: "4506 м", diff: "Сложный", class: "tag-hard", desc: "Священная трехглавая гора Алтая, высочайшая вершина Сибири. Место притяжения альпинистов." },
+            { title: "Мунку-Сардык", loc: "Восточный Саян", alt: "3491 м", diff: "Сложный", class: "tag-hard", desc: "Высшая точка Саянских гор на границе России и Монголии. Популярный подъем по льду каньона Белого Иркута." },
+            { title: "Шумакские Источники", loc: "Восточный Саян", alt: "1550 м", diff: "Средний", class: "tag-med", desc: "Труднодоступная долина со сотней целебных минеральных источников. Путь через Шумакский перевал." },
+            { title: "Казбек", loc: "Кавказ, Грузия/Россия", alt: "5033 м", diff: "Сложный", class: "tag-hard", desc: "Древний потухший вулкан. Один из самых красивых пятитысячников Кавказа с легендарной историей." },
+            { title: "Эверест (Джомолунгма)", loc: "Гималаи, Непал/Китай", alt: "8848 м", diff: "Сложный", class: "tag-hard", desc: "Высшая точка планеты Земля. Главная мечта и испытание для лучших альпинистов мира." },
+            { title: "Килиманджаро", loc: "Танзания, Африка", alt: "5895 м", diff: "Средний", class: "tag-med", desc: "Одинокий стратовулкан посреди африканской саванны. Подъем проходит через все климатические зоны." },
+            { title: "Монблан", loc: "Альпы, Франция/Италия", alt: "4808 м", diff: "Сложный", class: "tag-hard", desc: "Высочайшая вершина Западной Европы, родина современного мирового альпинизма." },
+            { title: "Плато Путорана", loc: "Красноярский край", alt: "1701 м", diff: "Сложный", class: "tag-hard", desc: "Затерянный мир каньонов, тысяч водопадов и нетронутой северной природы за полярным кругом." },
+            { title: "Пик Любви", loc: "Аршан, Тункинская долина", alt: "2124 м", diff: "Средний", class: "tag-med", desc: "Крутой, но доступный однодневный маршрут из курортного поселка Аршан с панорамой на всю долину." },
+            { title: "КБЖД (Кругобайкальская ж/д)", loc: "Озеро Байкал", alt: "450 м", diff: "Легкий", class: "tag-easy", desc: "Архитектурно-ландшафтный заповедник. Пеший поход вдоль старинных туннелей и виадуков у воды." },
+            { title: "Фишт", loc: "Адыгея, Кавказ", alt: "2867 м", diff: "Средний", class: "tag-med", desc: "Знаменитый горный массив с подземными пещерами, кораловыми рифами и уникальной флорой." },
+            { title: "Ергаки", loc: "Западный Саян", alt: "2221 м", diff: "Средний", class: "tag-med", desc: "Природный парк со скалами фантастических форм: Висячий камень, Спящий Саян, Парабола." },
+            { title: "Ключевская Сопка", loc: "Камчатка, Россия", alt: "4750 м", diff: "Сложный", class: "tag-hard", desc: "Самый высокий действующий вулкан Евразии с идеальным конусом и дымящимся кратером." },
+            { title: "Маттерхорн", loc: "Альпы, Швейцария", alt: "4478 м", diff: "Сложный", class: "tag-hard", desc: "Легендарная гранёная пирамида Альп, ставшая символом швейцарских гор." },
+            { title: "Фудзияма", loc: "Остров Хонсю, Япония", alt: "3776 м", diff: "Средний", class: "tag-med", desc: "Священный вулкан Японии. Миллионы туристов поднимаются на него, чтобы встретить рассвет." },
+            { title: "Рорайма", loc: "Венесуэла/Бразилия", alt: "2810 м", diff: "Сложный", class: "tag-hard", desc: "Столовая гора с плоской вершиной, вдохновившая Конан Дойла на роман «Затерянный мир»." },
+            { title: "Мачу-Пикчу (Тропа Инков)", loc: "Анды, Перу", alt: "2430 м", diff: "Средний", class: "tag-med", desc: "Древний город инков высоко в горах. Легендарный пеший трек через джунгли и перевалы." }
+        ];
+
+        let currentUser = JSON.parse(localStorage.getItem('user')) || null;
+        let isRegisterMode = false, map, marker, activeTripId = null;
+        let currentSelectedCoords = null;
+
+        function renderCatalog(filteredList = mountains) {
+            const container = document.getElementById('mountainCatalog');
+            if (filteredList.length === 0) {
+                container.innerHTML = '<div class="panel" style="text-align:center; padding:40px; color:#64748b;">Ничего не найдено по вашему запросу.</div>';
+                return;
+            }
+
+            container.innerHTML = filteredList.map((m, idx) => `
+                <div class="mountain-card">
+                    <h2 style="margin:0 0 5px 0; color:#1e293b;">🏔️ ${m.title}</h2>
+                    <div class="mountain-tags">
+                        <span class="tag ${m.class}">${m.diff}</span>
+                        <span class="tag">📍 ${m.loc}</span>
+                        <span class="tag">⛰️ ${m.alt}</span>
+                    </div>
+                    <p style="color: #475569; line-height: 1.5; margin: 10px 0;">${m.desc}</p>
+                    <div style="display:flex; gap:10px; margin-top:15px; align-items:center;">
+                        <input type="date" id="date-${idx}" style="margin:0; width:180px;">
+                        <button onclick="quickCreateTrip('${m.title}', '${m.loc}', '${m.diff}', ${idx})">Организовать поход сюда</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterCatalog() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const filtered = mountains.filter(m => 
+                m.title.toLowerCase().includes(query) || 
+                m.loc.toLowerCase().includes(query) || 
+                m.desc.toLowerCase().includes(query)
+            );
+            renderCatalog(filtered);
+        }
+
+        async function createCustomTrip() {
+            const title = document.getElementById('customTitle').value.trim();
+            let loc = document.getElementById('customLoc').value.trim();
+            const date = document.getElementById('customDate').value;
+            const difficulty = document.getElementById('customDiff').value;
+
+            if (!title) return alert('Укажите название похода');
+            if (!date) return alert('Выберите дату похода');
+
+            if (currentSelectedCoords) {
+                loc += ` (${currentSelectedCoords.lat.toFixed(2)}, ${currentSelectedCoords.lng.toFixed(2)})`;
+            }
+
+            if (!loc) loc = "Точка на карте не указана";
+
+            await fetch('/api/trips', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title,
+                    destination: loc,
+                    date,
+                    difficulty,
+                    creatorId: currentUser ? currentUser.id : null
+                })
+            });
+
+            document.getElementById('customTitle').value = '';
+            document.getElementById('customLoc').value = '';
+            document.getElementById('customDate').value = '';
+            alert('Ваш поход успешно создан!');
+            fetchTrips();
+        }
+
+        async function quickCreateTrip(title, destination, difficulty, idx) {
+            const date = document.getElementById(`date-${idx}`).value;
+            if (!date) return alert('Пожалуйста, выберите дату похода!');
+            
+            await fetch('/api/trips', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: `Поход на ${title}`,
+                    destination, date, difficulty,
+                    creatorId: currentUser ? currentUser.id : null
+                })
+            });
+            alert(`Поход на "${title}" успешно добавлен в активные походы!`);
+            fetchTrips();
+        }
+
+        function toggleAuthMode() {
+            isRegisterMode = !isRegisterMode;
+            document.getElementById('authTitle').innerText = isRegisterMode ? 'Регистрация' : 'Вход';
+            document.getElementById('authName').style.display = isRegisterMode ? 'block' : 'none';
+            document.getElementById('authBtn').innerText = isRegisterMode ? 'Зарегистрироваться' : 'Войти';
+            document.getElementById('toggleAuth').innerText = isRegisterMode ? 'Есть аккаунт? Войти' : 'Регистрация';
+        }
+
+        async function submitAuth() {
+            const email = document.getElementById('authEmail').value;
+            const password = document.getElementById('authPassword').value;
+            const name = document.getElementById('authName').value;
+            if (!email || !password) return alert('Заполните поля');
+
+            const url = isRegisterMode ? '/api/register' : '/api/login';
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({name, email, password})
+            });
+            const data = await res.json();
+            if (data.error) return alert(data.error);
+
+            if (isRegisterMode) {
+                alert('Успешно! Теперь войдите.');
+                toggleAuthMode();
+            } else {
+                currentUser = data;
+                localStorage.setItem('user', JSON.stringify(data));
+                checkAuth();
+            }
+        }
+
+        function continueAsGuest() {
+            currentUser = { id: null, name: 'Гость' };
+            checkAuth();
+        }
+
+        function checkAuth() {
+            if (currentUser) {
+                document.getElementById('authSection').style.display = 'none';
+                document.getElementById('appSection').style.display = 'block';
+                document.getElementById('userInfo').innerHTML = `Привет, <b>${currentUser.name}</b>! <button onclick="logout()" style="width:auto; padding:5px 10px; margin:0; background:#ef4444;">Выйти</button>`;
+                renderCatalog();
+                initMapAndWeather();
+                fetchTrips();
+            } else {
+                document.getElementById('authSection').style.display = 'flex';
+                document.getElementById('appSection').style.display = 'none';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('user');
+            currentUser = null;
+            checkAuth();
+        }
+
+        async function fetchTrips() {
+            const res = await fetch('/api/trips');
+            const trips = await res.json();
+            document.getElementById('tripsList').innerHTML = trips.length === 0 
+                ? '<p style="color:#888;">Пока нет активных походов. Создайте первый!</p>' 
+                : trips.map(trip => `
+                <div style="border-bottom:1px solid #e2e8f0; padding:10px 0;">
+                    <strong>${trip.title}</strong><br>
+                    <small>📍 ${trip.destination}</small><br>
+                    <small>📅 ${trip.date} | 👥 ${trip.participantsCount} участн.</small>
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        <button onclick="joinTrip(${trip.id})" style="padding:3px 8px; font-size:0.8em; background:#0284c7;">+1 Иду</button>
+                        <button onclick="openChat(${trip.id}, '${trip.title}')" style="padding:3px 8px; font-size:0.8em; background:#d97706;">💬 Чат</button>
+                        <button onclick="deleteTrip(${trip.id})" style="padding:3px 8px; font-size:0.8em; background:#dc2626;">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function joinTrip(id) { await fetch(`/api/trips/${id}/join`, { method: 'POST' }); fetchTrips(); }
+
+        // Обновленная функция удаления похода с автоматическим закрытием чата
+        async function deleteTrip(id) { 
+            if (confirm('Удалить поход?')) { 
+                await fetch(`/api/trips/${id}`, { method: 'DELETE' }); 
+                
+                // Если был открыт чат удаляемого похода, сбрасываем его
+                if (activeTripId === id) {
+                    activeTripId = null;
+                    document.getElementById('chatSection').style.display = 'none';
+                    document.getElementById('chatBox').innerHTML = '';
+                }
+
+                fetchTrips(); 
+            } 
+        }
+
+        async function openChat(tripId, title) {
+            activeTripId = tripId;
+            document.getElementById('chatTitle').innerText = `💬 Чат: ${title}`;
+            document.getElementById('chatSection').style.display = 'block';
+            loadMessages();
+        }
+
+        async function loadMessages() {
+            if (!activeTripId) return;
+            const res = await fetch(`/api/trips/${activeTripId}/messages`);
+            const msgs = await res.json();
+            document.getElementById('chatBox').innerHTML = msgs.length === 0 
+                ? '<span style="color:#aaa;">Сообщений пока нет. Напишите список продуктов!</span>' 
+                : msgs.map(m => `<div class="chat-msg"><b>${m.senderName}:</b> ${m.text}</div>`).join('');
+            
+            const chatBox = document.getElementById('chatBox');
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const text = document.getElementById('msgText').value.trim();
+            if (!text || !activeTripId) return;
+            await fetch(`/api/trips/${activeTripId}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, senderName: currentUser ? currentUser.name : 'Гость' })
+            });
+            document.getElementById('msgText').value = '';
+            loadMessages();
+        }
+
+        function initMapAndWeather() {
+            if (map) return;
+            map = L.map('map').setView([52.287, 104.305], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            
+            map.on('click', (e) => {
+                if (marker) map.removeLayer(marker);
+                marker = L.marker(e.latlng).addTo(map);
+                currentSelectedCoords = e.latlng;
+                
+                document.getElementById('customLoc').value = `Координаты: ${e.latlng.lat.toFixed(3)}, ${e.latlng.lng.toFixed(3)}`;
+                getWeather(e.latlng.lat, e.latlng.lng);
+            });
+            
+            getWeather(52.287, 104.305);
+        }
+
+        async function getWeather(lat, lon) {
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+                const data = await res.json();
+                document.getElementById('weather').innerHTML = `📍 [${lat.toFixed(2)}, ${lon.toFixed(2)}] | 🌡️ ${data.current_weather.temperature}°C | 💨 ${data.current_weather.windspeed} км/ч`;
+            } catch (e) {
+                document.getElementById('weather').innerHTML = 'Ошибка загрузки погоды';
+            }
+        }
+
+        checkAuth();
+    </script>
+</body>
+</html>
