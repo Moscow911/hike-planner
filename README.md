@@ -43,6 +43,7 @@ node index.js
 
 ##  Структура проекта
 
+```text
 hike_planer/
 ├── models/         # Модели данных Sequelize (User, Trip и др.)
 ├── public/         # Статические файлы фронтенда (index.html, стили, скрипты)
