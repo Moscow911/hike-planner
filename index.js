@@ -1,5 +1,7 @@
+require('dotenv').config();
 const express = require('express');
 const { DataTypes } = require('sequelize');
+const bcrypt = require('bcryptjs');
 const sequelize = require('./db');
 const User = require('./models/User');
 const Trip = require('./models/Trip');
@@ -29,8 +31,17 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await User.findOne({ where: { email, password } });
-        if (!user) return res.status(401).json({ error: 'Неверные данные' });
+        
+        const user = await User.findOne({ where: { email } });
+        if (!user) {
+            return res.status(401).json({ error: 'Неверные данные' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Неверные данные' });
+        }
+
         res.json({ id: user.id, name: user.name });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -98,10 +109,12 @@ app.post('/api/trips/:id/messages', async (req, res) => {
     }
 });
 
+const PORT = process.env.PORT || 5000;
+
 async function start() {
     try {
         await sequelize.sync({ alter: true });
-        app.listen(5000, () => console.log('http://localhost:5000'));
+        app.listen(PORT, () => console.log(`http://localhost:5000`));
     } catch (e) {
         console.error(e.message);
     }
