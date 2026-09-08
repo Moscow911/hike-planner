@@ -17,7 +17,7 @@
 ##  Технологический стек
 
 * **Backend:** Node.js, Express.js
-* **База данных:** SQLite / PostgreSQL, ORM Sequelize
+* **База данных:** MySQL, ORM Sequelize
 * **Frontend:** HTML5, CSS3, JavaScript (ES6+), Leaflet.js
 * **API:** Open-Meteo API
 
